@@ -30,6 +30,7 @@ def PWG(mode = "IQU",NSIDE = 512):
     return(weights,pixels)
 
 def filter_0(obs, det_data = 'signal'):
+    ## For each detector's timestream, remove the offset, so the TOD is centered around 0
     obs_arr = obs.detdata[det_data]
     obs_arr2 = np.zeros(obs_arr.shape)
     i = 0
@@ -85,11 +86,6 @@ def noise(data,noiseless = True):
     noise_model.apply(data) ## Read detector noise from the focalplane
 
 
-        
-def init_template_matrix(step_0 = 4*u.second):
-    templates = [toast.templates.Offset(name="baselines", step_time = step_0)]
-    template_matrix = toast.ops.TemplateMatrix(templates=templates)
-    return(template_matrix)
 
 def atmosphere(data, weights):
     hpointing = toast.ops.PointingDetectorSimple(boresight = 'boresight_azel')
@@ -101,7 +97,7 @@ def scan_map(file_in, pixels, weights,data,det_data = 'signal'):
     scan_map.detdata = det_data
     scan_map.apply(data)
     
-def mapmaker(pixels, weights, template_matrix, data,output_dir=None, det_data = 'signal',iter_max=50):
+def mapmaker(pixels, weights, data,output_dir=None, det_data = 'signal',iter_max=50):
     binner = toast.ops.BinMap(pixel_pointing = pixels, stokes_weights = weights)
     filterbin = toast.ops.FilterBin(#cache_dir = 'filterbin'                                ,
                                 det_flag_mask = 3 # Bit mask value for optional detector flagging
@@ -132,7 +128,8 @@ def mapmaker(pixels, weights, template_matrix, data,output_dir=None, det_data = 
     filterbin.output_dir = output_dir
     filterbin.apply(data)
     
-def main(file_in, fplane,sched, output_dir,noiseless = False,atm = False):
+def main(file_in, fplane,sched, output_dir,noiseless = True,atm = False):
+    ## Create instrument and scan strategy
     comm = init_comm()
     data = init_data(comm)
     weights,pixels = PWG()
@@ -141,14 +138,15 @@ def main(file_in, fplane,sched, output_dir,noiseless = False,atm = False):
     site = init_site(schedule)
     telescope = init_telescope(focalplane,site)
     sim_ground(data,telescope,schedule)
-    ob = data.obs[0]
-    noise(data,noiseless)
-    if atmosphere:
-        atmosphere(data,weights)
-    filter_0(ob)    
-    template_matrix = init_template_matrix()
+    ## scan map and add or not noise + atmosphere
     scan_map(file_in,pixels,weights,data)
-    mapmaker(pixels, weights, template_matrix, data, output_dir)
+    noise(data,noiseless)
+    if atm:
+        atmosphere(data,weights)
+    ## Remove offset
+    ob = data.obs[0]
+    filter_0(ob)    
+    mapmaker(pixels, weights, data, output_dir)
     
 if __name__  == '__main__':
     import argparse

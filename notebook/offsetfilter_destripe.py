@@ -76,6 +76,7 @@ def noise(data,noiseless = True):
     noise_model.apply(data) ## Read detector noise from the focalplane
 
 def filter_0(obs, det_data = 'signal'):
+    ## For each detector's timestream, remove the offset, so the TOD is centered around 0
     obs_arr = obs.detdata[det_data]
     obs_arr2 = np.zeros(obs_arr.shape)
     i = 0
@@ -85,6 +86,7 @@ def filter_0(obs, det_data = 'signal'):
     obs.detdata[det_data][:,:]  = obs_arr2
         
 def init_template_matrix(step_0 = 4*u.second):
+    ## Template baseline for destriping
     templates = [toast.templates.Offset(name="baselines", step_time = step_0)]
     template_matrix = toast.ops.TemplateMatrix(templates=templates)
     return(template_matrix)
@@ -109,7 +111,7 @@ def mapmaker(pixels, weights, template_matrix, data,output_dir=None, det_data = 
     mapmaker.output_dir = output_dir
     mapmaker.apply(data)
     
-def main(file_in, fplane,sched, output_dir,noiseless=false):
+def main(file_in, fplane,sched, output_dir,noiseless=True,atm = False):
     comm = init_comm()
     data = init_data(comm)
     weights,pixels = PWG()
@@ -118,13 +120,13 @@ def main(file_in, fplane,sched, output_dir,noiseless=false):
     site = init_site(schedule)
     telescope = init_telescope(focalplane,site)
     sim_ground(data,telescope,schedule)
-    ob = data.obs[0]
+    scan_map(file_in,pixels,weights,data)
     noise(data,noiseless)
-    if atmosphere:
+    if atm:
         atmosphere(data,weights)
+    ob = data.obs[0]
     filter_0(ob)
     template_matrix = init_template_matrix()
-    scan_map(file_in,pixels,weights,data)
     mapmaker(pixels, weights, template_matrix, data, output_dir)
     
 if __name__  == '__main__':
