@@ -124,8 +124,8 @@ def main(file_in, fplane,sched, output_dir,noiseless=True,atm = False):
     noise(data,noiseless)
     if atm:
         atmosphere(data,weights)
-    ob = data.obs[0]
-    filter_0(ob)
+    for ob in data.obs:
+        filter_0(ob)
     template_matrix = init_template_matrix()
     mapmaker(pixels, weights, template_matrix, data, output_dir)
     

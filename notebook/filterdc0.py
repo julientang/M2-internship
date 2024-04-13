@@ -144,8 +144,8 @@ def main(file_in, fplane,sched, output_dir,noiseless = True,atm = False):
     if atm:
         atmosphere(data,weights)
     ## Remove offset
-    ob = data.obs[0]
-    filter_0(ob)    
+    for ob in data.obs:
+        filter_0(ob)    
     mapmaker(pixels, weights, data, output_dir)
     
 if __name__  == '__main__':
