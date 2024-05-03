@@ -66,7 +66,7 @@ def sim_ground(data,telescope, schedule,name="sim_ground", weather="south_pole",
                                 ) ##simulate motion of the boresight
     sim_ground.apply(data)
 
-def noise(data,noiseless = True):    
+def noise(data,noiseless = True): 
     for ob in data.obs:
         ob.detdata.create(name = 'noise',units = u.K)
     noise_model = toast.ops.DefaultNoiseModel()
@@ -74,8 +74,8 @@ def noise(data,noiseless = True):
     if noiseless:
         sim_noise.det_data= 'noise'
     noise_model.apply(data) ## Read detector noise from the focalplane
-
-def filter_0(obs, det_data = 'signal'):
+    
+def filter_0(obs, det_data = 'noise'):
     ## For each detector's timestream, remove the offset, so the TOD is centered around 0
     obs_arr = obs.detdata[det_data]
     obs_arr2 = np.zeros(obs_arr.shape)
@@ -85,33 +85,30 @@ def filter_0(obs, det_data = 'signal'):
         i+=1
     obs.detdata[det_data][:,:]  = obs_arr2
         
-def init_template_matrix(step_0 = 4*u.second):
+def init_template_matrix(step_0 = 10*u.second):
     ## Template baseline for destriping
     templates = [toast.templates.Offset(name="baselines", step_time = step_0)]
     template_matrix = toast.ops.TemplateMatrix(templates=templates)
     return(template_matrix)
 
-def scan_map(file_in, pixels, weights,data,det_data = 'signal'):
-    scan_map = toast.ops.ScanHealpixMap(name="scan_healpix_map", file=file_in,pixel_pointing = pixels, stokes_weights = weights)
-    scan_map.detdata = det_data
-    scan_map.apply(data)
-    
 def atmosphere(data, weights):
+    for ob in data.obs:
+        ob.detdata.create(name = 'atmosphere',units = u.K)
     hpointing = toast.ops.PointingDetectorSimple(boresight = 'boresight_azel')
     sim_atmosphere = toast.ops.SimAtmosphere(detector_pointing=hpointing, detector_weights= weights)
     sim_atmosphere.apply(data)
     
-def mapmaker(pixels, weights, template_matrix, data,output_dir=None, det_data = 'signal',iter_max=50):
+def mapmaker(pixels, weights, template_matrix, data,output_dir=None, det_data = 'noise',iter_max=50):
     binner = toast.ops.BinMap(pixel_pointing = pixels, stokes_weights = weights)
+    binner.det_data =det_data
     mapmaker = toast.ops.MapMaker(binning = binner, template_matrix=template_matrix)
     mapmaker.iter_max = iter_max
-    binner.det_data =det_data
-    mapmaker.binning= binner
+    #mapmaker.binning= binner
     mapmaker.det_data = det_data
     mapmaker.output_dir = output_dir
     mapmaker.apply(data)
     
-def main(file_in, fplane,sched, output_dir,noiseless=True,atm = False):
+def main(fplane,sched, output_dir,detdata = 'noise',noiseless=True,atm = False):
     comm = init_comm()
     data = init_data(comm)
     weights,pixels = PWG()
@@ -120,30 +117,29 @@ def main(file_in, fplane,sched, output_dir,noiseless=True,atm = False):
     site = init_site(schedule)
     telescope = init_telescope(focalplane,site)
     sim_ground(data,telescope,schedule)
-    scan_map(file_in,pixels,weights,data)
     noise(data,noiseless)
     if atm:
         atmosphere(data,weights)
     for ob in data.obs:
-        filter_0(ob)
+        filter_0(ob,detdata)
     template_matrix = init_template_matrix()
-    mapmaker(pixels, weights, template_matrix, data, output_dir)
+    mapmaker(pixels, weights, template_matrix, data, output_dir,detdata)
     
 if __name__  == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Apply filtering and destriping to a simulated TOD from an input map')
-    parser.add_argument('--file_in', metavar='path', required=True,
-                        help='path to input map')
     parser.add_argument('--fplane', metavar='path', required=True,
                         help='path to focalplane')
     parser.add_argument('--sched', metavar='text', required=True,
                         help='path to scan strategy')
     parser.add_argument('--output_dir', metavar='dir', required=True,
                         help='output directory')
+    parser.add_argument('--detdata', metavar='string', required=False,
+                        help='For projected noise')
     parser.add_argument('--noiseless', metavar='Bool', required=False,
                         help='Enables noise')
     parser.add_argument('--atm', metavar='Bool', required=False,
                         help='Enables atmosphere')
     args = parser.parse_args()
-    main(file_in=args.file_in, fplane=args.fplane, sched=args.sched,output_dir = args.output_dir,noiseless = args.noiseless, atm= args.atm)
+    main(fplane=args.fplane, sched=args.sched,output_dir = args.output_dir,detdata = args.detdata,noiseless = args.noiseless, atm= args.atm)
     

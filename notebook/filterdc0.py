@@ -77,8 +77,8 @@ def sim_ground(data,telescope, schedule,name="sim_ground", weather="south_pole",
     sim_ground.apply(data)
 
 def noise(data,noiseless = True):    
-    ob = data.obs[0]
-    ob.detdata.create(name = 'noise',units = u.K)
+    for ob in data.obs:
+        ob.detdata.create(name = 'noise',units = u.K)
     noise_model = toast.ops.DefaultNoiseModel()
     sim_noise = toast.ops.SimNoise() ###Need to instantiate Noise Model
     if noiseless : 
