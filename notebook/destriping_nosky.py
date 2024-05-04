@@ -7,10 +7,9 @@ import numpy as np
 
 import toast
 import astropy.units as u 
+import mpi4py as mp
 
-
-# nthread = os.environ["OMP_NUM_THREADS"]
-
+from toast.mpi import MPI, Comm
 
 def init_comm():
     comm, procs, rank = toast.get_world()
@@ -23,11 +22,14 @@ def init_data(comm = None):
     data = toast.Data(comm=toast_comm)
     return(data)
 
-def PWG(mode = "IQU",NSIDE = 512):
+def PWG(data, mode = "IQU",NSIDE = 512):
     pointing = toast.ops.PointingDetectorSimple() ##boresight pointing into detector frame (RA/DEC by default)
     weights = toast.ops.StokesWeights(detector_pointing = pointing,mode = "IQU")
     pixels = toast.ops.PixelsHealpix(detector_pointing = pointing, nside = NSIDE)
-    return(weights,pixels)
+    pointing.apply(data)
+    weights.apply(data)
+    pixels.apply(data)
+    return(pointing, weights,pixels)
 
 def init_focalplane(fplane,comm,srate =10*u.Hz):
     focalplane = toast.instrument.Focalplane(sample_rate=srate#,thinfp=256
@@ -66,14 +68,14 @@ def sim_ground(data,telescope, schedule,name="sim_ground", weather="south_pole",
                                 ) ##simulate motion of the boresight
     sim_ground.apply(data)
 
-def noise(data,noiseless = True): 
+def noise(data): 
     for ob in data.obs:
         ob.detdata.create(name = 'noise',units = u.K)
     noise_model = toast.ops.DefaultNoiseModel()
     sim_noise = toast.ops.SimNoise() ###Need to instantiate Noise Model
-    if noiseless:
-        sim_noise.det_data= 'noise'
+    sim_noise.det_data= 'noise'
     noise_model.apply(data) ## Read detector noise from the focalplane
+    sim_noise.apply(data) ##Write detector noise in associated timestream
     
 def filter_0(obs, det_data = 'noise'):
     ## For each detector's timestream, remove the offset, so the TOD is centered around 0
@@ -103,27 +105,27 @@ def mapmaker(pixels, weights, template_matrix, data,output_dir=None, det_data = 
     binner.det_data =det_data
     mapmaker = toast.ops.MapMaker(binning = binner, template_matrix=template_matrix)
     mapmaker.iter_max = iter_max
-    #mapmaker.binning= binner
+    mapmaker.binning= binner
     mapmaker.det_data = det_data
     mapmaker.output_dir = output_dir
     mapmaker.apply(data)
     
-def main(fplane,sched, output_dir,detdata = 'noise',noiseless=True,atm = False):
+def main(fplane,sched, output_dir,atm = False):
     comm = init_comm()
     data = init_data(comm)
-    weights,pixels = PWG()
+    pointing,weights,pixels = PWG(data)
     focalplane = init_focalplane(fplane,comm)
     schedule = init_schedule(comm,sched)
     site = init_site(schedule)
     telescope = init_telescope(focalplane,site)
     sim_ground(data,telescope,schedule)
-    noise(data,noiseless)
+    noise(data)
     if atm:
         atmosphere(data,weights)
     for ob in data.obs:
-        filter_0(ob,detdata)
+        filter_0(ob)
     template_matrix = init_template_matrix()
-    mapmaker(pixels, weights, template_matrix, data, output_dir,detdata)
+    mapmaker(pixels, weights, template_matrix, data, output_dir)
     
 if __name__  == '__main__':
     import argparse
@@ -134,12 +136,8 @@ if __name__  == '__main__':
                         help='path to scan strategy')
     parser.add_argument('--output_dir', metavar='dir', required=True,
                         help='output directory')
-    parser.add_argument('--detdata', metavar='string', required=False,
-                        help='For projected noise')
-    parser.add_argument('--noiseless', metavar='Bool', required=False,
-                        help='Enables noise')
     parser.add_argument('--atm', metavar='Bool', required=False,
                         help='Enables atmosphere')
     args = parser.parse_args()
-    main(fplane=args.fplane, sched=args.sched,output_dir = args.output_dir,detdata = args.detdata,noiseless = args.noiseless, atm= args.atm)
+    main(fplane=args.fplane, sched=args.sched,output_dir = args.output_dir,atm= args.atm)
     

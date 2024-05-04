@@ -8,10 +8,6 @@ import numpy as np
 import toast
 import astropy.units as u 
 
-
-# nthread = os.environ["OMP_NUM_THREADS"]
-
-
 def init_comm():
     comm, procs, rank = toast.get_world()
     return(comm)
@@ -74,7 +70,8 @@ def noise(data,noiseless = True):
     if noiseless:
         sim_noise.det_data= 'noise'
     noise_model.apply(data) ## Read detector noise from the focalplane
-
+    sim_noise.apply(data)
+    
 def filter_0(obs, det_data = 'signal'):
     ## For each detector's timestream, remove the offset, so the TOD is centered around 0
     obs_arr = obs.detdata[det_data]
@@ -85,7 +82,7 @@ def filter_0(obs, det_data = 'signal'):
         i+=1
     obs.detdata[det_data][:,:]  = obs_arr2
         
-def init_template_matrix(step_0 = 4*u.second):
+def init_template_matrix(step_0 = 10*u.second):
     ## Template baseline for destriping
     templates = [toast.templates.Offset(name="baselines", step_time = step_0)]
     template_matrix = toast.ops.TemplateMatrix(templates=templates)
